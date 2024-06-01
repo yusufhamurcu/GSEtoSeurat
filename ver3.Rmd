@@ -1,0 +1,131 @@
+---
+title: "Haradhvala"
+author: "Yusuf Hamurcu"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Library Installation
+```{r}
+suppressPackageStartupMessages(library(BPCells))
+suppressPackageStartupMessages(library(Seurat))
+suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(Matrix))
+```
+
+# Extracting files
+
+```{r,eval=FALSE}
+# Patient files created but they are also in zipped form
+untar("GSE197268_RAW.tar",exdir = "./tar_data")
+files <- list.files("./tar_data")
+
+# Patient files get extracted 
+for (i in files){
+  filname <- paste0("./tar_data/",i)
+  untar(filname,exdir = "./tar_data")
+  unlink(filname)
+}
+
+# After that all patient info in raw_data folder with matrix,barcodes and features files
+```
+
+
+```{r, eval=FALSE}
+dir <- list.dirs("./tar_data")
+dir <- dir[-1] # First one is upper folder direction ("./")
+
+# Files in each folder(by patient) gets readed
+for (i in dir){
+  file_dir <- (paste0(i,"/",list.files(i)))
+  for (a in file_dir){
+    if (grepl("*matrix\\.mtx\\.gz",a)){
+      mtx <- as(readMM(a),"dgCMatrix")
+    }
+    if (grepl("*barcodes\\.tsv\\.gz",a)){
+      barcodes <- read.delim(a,header = F)
+    }
+    if (grepl("*features\\.tsv\\.gz",a)){
+      features <- read.delim(a,header = F)
+    }
+  }
+  
+  # Barcodes and features get set in mtx
+  
+  colnames(mtx) <- barcodes$V1
+  rownames(mtx) <- features$V2 # V1 is ensemble names
+  
+  # Each patient matrix get wrote in Seurat readable form
+  
+  dir_name <- paste0("./Matrixes/",substr(i,12,nchar(i)))
+  write_matrix_dir(mtx,dir_name)
+  #print(paste0("Done: ",i))
+}
+
+rm(barcodes,features,mtx)
+unlink("./tar_data/", recursive = T) # Delete unnecessary folder
+gc()
+```
+
+
+```{r}
+
+dir <- list.dirs("./Matrixes")
+dir <- dir[-1]
+
+# Patients get read in bulk for SeuratObject creation
+
+for (x in dir){
+  obj <- open_matrix_dir(x)
+  obj_name <- substr(x,12,nchar(x))
+  assign(obj_name,obj)
+  #print(paste0("Object Created: ", obj_name))
+}
+
+rm(obj,x,obj_name,dir)
+ls()
+gc()
+```
+
+
+```{r}
+# Final wanted categories
+# Patient29 D7-CART, D7-retreatment,Infusion-retreatment is not included because there are only one of them and it breaks the loop
+
+type_list <- c("Baseline$","Infusion$","D7$","D7-CART$","D14$")
+
+# Patients get called by categories
+
+for (i in type_list){
+  sub_list <- lapply(ls(pattern = i),get)
+  sub <- do.call(cbind, sub_list) # cbind() combines matrixes in sub_list
+  rm(list = ls(pattern = i))
+  sub <- CreateSeuratObject(sub) # SeuratObject creation with combinated matrixes 
+  assign(substr(i,1,nchar(i)-1),sub)
+}
+
+# Categories that have only one item gets created manually
+{
+rm(sub,sub_list,i,type_list)
+`D7-CART-retreatment` <- CreateSeuratObject(`Patient29-D7-CART-retreatment`)
+rm(`Patient29-D7-CART-retreatment`)  
+`D7-retreatment` <- CreateSeuratObject(`Patient29-D7-retreatment`)
+rm(`Patient29-D7-retreatment`)
+`Infusion-retreatment` <- CreateSeuratObject(`Patient29-Infusion-retreatment`)
+rm(`Patient29-Infusion-retreatment`)
+gc()
+  } 
+  
+
+```
+
+```{r}
+# Final control of objects
+ls()
+```
+
+
+```{r}
+sessionInfo()
+```
+
