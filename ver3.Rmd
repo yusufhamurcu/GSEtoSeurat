@@ -11,7 +11,8 @@ suppressPackageStartupMessages(library(BPCells))
 suppressPackageStartupMessages(library(Seurat))
 suppressPackageStartupMessages(library(data.table))
 suppressPackageStartupMessages(library(Matrix))
-```
+suppressPackageStartupMessages(library(tidyverse))
+``` 
 
 # Extracting files
 
@@ -70,7 +71,7 @@ gc()
 
 ```{r}
 
-dir <- list.dirs("./Matrixes")
+dir <- list.dirs("../Matrixes")
 dir <- dir[-1]
 
 # Patients get read in bulk for SeuratObject creation
@@ -78,6 +79,7 @@ dir <- dir[-1]
 for (x in dir){
   obj <- open_matrix_dir(x)
   obj_name <- substr(x,12,nchar(x))
+  obj <- CreateSeuratObject(obj, project = obj_name)
   assign(obj_name,obj)
   #print(paste0("Object Created: ", obj_name))
 }
@@ -85,6 +87,29 @@ for (x in dir){
 rm(obj,x,obj_name,dir)
 ls()
 gc()
+```
+
+```{r}
+type_list <- c("Baseline$","Infusion$","D7$","D7-CART$","D14$")
+
+for (i in type_list){
+  sub_list <- lapply(ls(pattern = i),get)
+  sub <- do.call(merge, sub_list)
+  rm(list = ls(pattern = i))
+  assign(substr(i,1,nchar(i)-1),sub)
+}
+
+{
+rm(sub,sub_list,i,type_list)
+`D7-CART-retreatment` <- CreateSeuratObject(`Patient29-D7-CART-retreatment`)
+rm(`Patient29-D7-CART-retreatment`)  
+`D7-retreatment` <- CreateSeuratObject(`Patient29-D7-retreatment`)
+rm(`Patient29-D7-retreatment`)
+`Infusion-retreatment` <- CreateSeuratObject(`Patient29-Infusion-retreatment`)
+rm(`Patient29-Infusion-retreatment`)
+gc()
+  } 
+  
 ```
 
 
@@ -126,6 +151,46 @@ ls()
 
 
 ```{r}
-sessionInfo()
+co <- merge(`/Patient10-Baseline`,`/Patient11-Baseline`)
+data <- co
+data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
+VlnPlot(data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+plot1 <- FeatureScatter(data, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(data, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+data <- NormalizeData(data, normalization.method = "LogNormalize")
+data <- FindVariableFeatures(data)
+
+top10 <- head(VariableFeatures(data), 10)
+
+plot1 <- VariableFeaturePlot(data)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+
+all.genes <- rownames(data)
+data <- ScaleData(data, features = all.genes)
+
+data <- ScaleData(data, vars.to.regress = "percent.mt")
+
+data <- RunPCA(data, features = VariableFeatures(object = data))
+
+VizDimLoadings(data, dims = 1:2, reduction = "pca")
+
+DimPlot(data, reduction = "pca")
+DimHeatmap(data, dims = 1, cells = 500, balanced = TRUE)
+
+data <- FindNeighbors(data, dims = 1:10)
+data <- FindClusters(data, resolution = 0.5)
+data <- RunUMAP(data, dims = 1:10)
+
+
+p5 <- DimPlot(data, reduction = "umap",group.by = "orig.ident")
+#ggsave("plot.jpeg", plot = p5, width = 8,height = 6)
+
+"total 810"
+"baseline from 154 to 725"
+"expected after total 3900 MB"
 ```
 
