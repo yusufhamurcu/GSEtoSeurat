@@ -68,6 +68,18 @@ unlink("./tar_data/", recursive = T) # Delete unnecessary folder
 gc()
 ```
 
+# Move
+
+```{r}
+get_meta <- function(x){
+  a <- strsplit(x$meta,"-")[[1]]
+  x <- AddMetaData(x, metadata = a[1], col.name = "ID")
+  sample_type <- paste(a[2:length(a)],collapse = "-")
+  x <- AddMetaData(x, metadata = sample_type, col.name = "sample_type")
+  return(x)
+}
+
+```
 
 ```{r}
 
@@ -78,38 +90,66 @@ dir <- dir[-1]
 
 for (x in dir){
   obj <- open_matrix_dir(x)
-  obj_name <- substr(x,12,nchar(x))
-  obj <- CreateSeuratObject(obj, project = obj_name)
+  obj_name <- substr(x,13,nchar(x))
+  #obj <- CreateSeuratObject(obj, project = "Haradhvala")
+  #obj <- get_meta(obj,obj_name)
   assign(obj_name,obj)
   #print(paste0("Object Created: ", obj_name))
 }
 
 rm(obj,x,obj_name,dir)
-ls()
+#ls()
 gc()
 ```
 
 ```{r}
 type_list <- c("Baseline$","Infusion$","D7$","D7-CART$","D14$")
 
-for (i in type_list){
-  sub_list <- lapply(ls(pattern = i),get)
-  sub <- do.call(merge, sub_list)
-  rm(list = ls(pattern = i))
-  assign(substr(i,1,nchar(i)-1),sub)
-}
+
+  sub_list <- lapply(ls(pattern = "Patient"),get)
+  sub <- do.call(cbind, sub_list)
+  #sub <- Reduce(function(x, y) merge(x, y), sub_list)
+  rm(list = ls(pattern = "Patient"))
+  #assign(substr(i,1,nchar(i)-1),sub)
+sub <- CreateSeuratObject(sub)
 
 {
-rm(sub,sub_list,i,type_list)
-`D7-CART-retreatment` <- CreateSeuratObject(`Patient29-D7-CART-retreatment`)
 rm(`Patient29-D7-CART-retreatment`)  
-`D7-retreatment` <- CreateSeuratObject(`Patient29-D7-retreatment`)
 rm(`Patient29-D7-retreatment`)
-`Infusion-retreatment` <- CreateSeuratObject(`Patient29-Infusion-retreatment`)
 rm(`Patient29-Infusion-retreatment`)
 gc()
-  } 
+} 
+
+asy <- c()
+for (i in sub@matrix_list){
+  a <- substr(i@dir,56,nchar(i@dir))
+  b <- ncol(i)
+  asy <- c(asy, rep(a,b))
+  }
+
+
+a <- strsplit(asy,"-")
   
+ids <- unlist(lapply(a,function(x) x[[1]]))
+types <- unlist(lapply(a, function(x) paste(x[2:length(x)],collapse = "-")))
+
+
+
+
+  
+ls()
+{
+saveRDS(Baseline,file = "Baseline.rds")
+saveRDS(D14,file = "D14.rds")
+saveRDS(D7,file = "D7.rds")
+saveRDS(`D7-CART`,file = "D7-CART.rds")
+saveRDS(`D7-CART-retreatment`,file = "D7-CART-retreatment.rds")
+saveRDS(`D7-retreatment`,file = "D7-retreatment.rds")
+saveRDS(Infusion,file = "Infusion.rds")
+saveRDS(`Infusion-retreatment`,file = "Infusion-retreatment.rds")
+}
+
+
 ```
 
 
@@ -144,53 +184,89 @@ gc()
 
 ```
 
-```{r}
-# Final control of objects
-ls()
-```
 
 
 ```{r}
-co <- merge(`/Patient10-Baseline`,`/Patient11-Baseline`)
+
+co <- ls()
+
+co <- co[sapply(co, function(x) class(get(x)) == "Seurat")]
+sub_list <- lapply(co,get)
+co <- Reduce(function(x, y) merge(x, y), sub_list)
+rm(list = sub_list)
+saveRDS(co,file = "co.rds")
+
+
+
+co <- merge(`Patient10-Baseline`,`Patient11-Baseline`)
+co <- merge(`Patient10-D7`,co)
 data <- co
+data <- readRDS("step2.rds")
+
+for (data in co){
+  
+data <- get(data)
 data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
-VlnPlot(data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+#VlnPlot(data, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, raster = F)
 
 plot1 <- FeatureScatter(data, feature1 = "nCount_RNA", feature2 = "percent.mt")
 plot2 <- FeatureScatter(data, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
-plot1 + plot2
+#plot1 + plot2
 
 data <- NormalizeData(data, normalization.method = "LogNormalize")
+#saveRDS(data, "normalized.rds")
 data <- FindVariableFeatures(data)
+#saveRDS(data, "step2.rds")
 
 top10 <- head(VariableFeatures(data), 10)
 
 plot1 <- VariableFeaturePlot(data)
 plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
-plot1 + plot2
+#plot1 + plot2
 
 all.genes <- rownames(data)
 data <- ScaleData(data, features = all.genes)
 
 data <- ScaleData(data, vars.to.regress = "percent.mt")
+#saveRDS(data, "step3.rds")
 
 data <- RunPCA(data, features = VariableFeatures(object = data))
+name <- paste(data@meta.data$ID[1],data@meta.data$sample_type[1], sep = "-")
+assign(name,data)
+}
+#VizDimLoadings(data, dims = 1:2, reduction = "pca")
 
-VizDimLoadings(data, dims = 1:2, reduction = "pca")
-
-DimPlot(data, reduction = "pca")
-DimHeatmap(data, dims = 1, cells = 500, balanced = TRUE)
+#DimPlot(data, reduction = "pca")
+#DimHeatmap(data, dims = 1, cells = 500, balanced = TRUE)
 
 data <- FindNeighbors(data, dims = 1:10)
 data <- FindClusters(data, resolution = 0.5)
 data <- RunUMAP(data, dims = 1:10)
 
 
-p5 <- DimPlot(data, reduction = "umap",group.by = "orig.ident")
-#ggsave("plot.jpeg", plot = p5, width = 8,height = 6)
+p1 <- DimPlot(data, reduction = "umap",group.by = "sample_type")
+p2 <- DimPlot(data, reduction = "umap",group.by = "ID")
+p3 <- DimPlot(data, reduction = "umap",group.by = "orig.ident")
+
+p1 + p2 + p3
+ggsave("plot3.jpeg", plot = p3, width = 8,height = 6)
 
 "total 810"
 "baseline from 154 to 725"
 "expected after total 3900 MB"
 ```
+
+
+
+```{r}
+data <- readRDS("co.rds")
+
+
+```
+
+
+
+
+
+
 

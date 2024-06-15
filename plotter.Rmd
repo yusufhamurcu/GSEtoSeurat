@@ -1,0 +1,129 @@
+---
+title: ''
+author: "Yusuf Hamurcu"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+suppressPackageStartupMessages(library(BPCells))
+suppressPackageStartupMessages(library(Seurat))
+suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(Matrix))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(ggrepel))
+suppressPackageStartupMessages(library(patchwork))
+``` 
+
+```{r, eval=FALSE}
+dir <- list.dirs("../Matrixes")
+dir <- dir[-1]
+
+
+for (x in dir){
+  obj <- open_matrix_dir(x)
+  obj_name <- substr(x,13,nchar(x))
+  assign(obj_name,obj)
+}
+
+rm(obj,x,obj_name,dir)
+```
+
+```{r,eval=FALSE}
+type_list <- c("Baseline$","Infusion$","D7$","D7-CART$","D14$")
+
+for (i in type_list){
+  sub_list <- lapply(ls(pattern = i),get)
+  sub <- do.call(cbind, sub_list)
+  rm(list = ls(pattern = i))
+  rm(sub_list)
+  assign(substr(i,1,nchar(i)-1),sub)
+}
+rm(list = ls(pattern = "Patient29"))
+rm(sub,i)
+```
+
+```{r,eval=FALSE}
+for (name in type_list)
+{
+obj <- get(ls(pattern = name))
+asy <- c()
+for (i in obj@matrix_list){
+  a <- substr(i@dir,56,nchar(i@dir))
+  b <- ncol(i)
+  asy <- c(asy, rep(a,b))
+  }
+rm(a,b,i)
+
+meta <- strsplit(asy,"-")
+  
+ids <- unlist(lapply(meta,function(x) x[[1]]))
+s_types <- unlist(lapply(meta, function(x) paste(x[2:length(x)],collapse = "-")))
+rm(asy,meta)
+obj <- CreateSeuratObject(obj)
+
+obj$ID <- ids
+obj$sample_type <- s_types
+assign(substr(name,1,nchar(name)-1),obj)
+
+}
+rm(obj,name,s_types,types,ids)
+```
+
+
+```{r,eval=FALSE}
+for (name in type_list)
+{
+data <- get(ls(pattern = name))
+data[["percent.mt"]] <- PercentageFeatureSet(data, pattern = "^MT-")
+
+data <- NormalizeData(data, normalization.method = "LogNormalize")
+data <- FindVariableFeatures(data)
+
+all.genes <- rownames(data)
+data <- ScaleData(data, features = all.genes)
+
+data <- ScaleData(data, vars.to.regress = "percent.mt")
+data <- RunPCA(data, features = VariableFeatures(object = data))
+
+data <- FindNeighbors(data, dims = 1:10)
+data <- FindClusters(data, resolution = 0.5)
+data <- RunUMAP(data, dims = 1:10)
+
+assign(substr(name,1,nchar(name)-1),data)
+print(name)
+}
+
+```
+
+```{r}
+Baseline <- readRDS("baseline_processed.rds")
+Infusion <- readRDS("infusion_processed.rds")
+D14 <- readRDS("D14_processed.rds")
+D7 <- readRDS("D7_processed.rds")
+D7_CART <- readRDS("D7_CART_processed.rds")
+
+type_list <- c("Baseline$","Infusion$","D7$","D7_CART$","D14$")
+
+```
+
+
+
+```{r}
+for (data in type_list){
+  name <- substr(data,1,(nchar(data)-1))
+  data <- get(ls(pattern = data))
+  levels <- factor(data$ID)
+  colors <- rep("grey", length(levels))
+  names(colors) <- levels
+for (patient in unique(data$ID)){
+  colors <- rep("grey", length(levels))
+  colors[patient] <- "orange"
+  plot <- DimPlot(data, reduction = "umap",group.by = "ID",cols = colors) + theme(legend.position = "none")
+  ggsave(filename = paste0(patient, ".png"), plot = plot, path = paste0("./",name))
+}}
+
+
+```
+
+
