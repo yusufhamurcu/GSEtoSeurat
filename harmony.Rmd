@@ -1,0 +1,144 @@
+---
+title: "ifnb"
+author: "Yusuf Hamurcu"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+library(harmony)
+library(Seurat)
+library(SeuratData)
+library(tidyverse)
+library(ggplot2)
+library(BPCells)
+```
+
+
+```{r}
+sub <- readRDS("./rds/Seurat_wo_mat.rds")
+mat <- open_matrix_dir("../Single/")
+
+sub[["RNA"]]$counts <- mat
+
+
+sub$percent.mt <- PercentageFeatureSet(sub, pattern = '^MT-')
+View(sub@meta.data)
+# explore QC
+VlnPlot(sub, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"))
+
+# filter
+sub
+sub.filtered <- subset(sub, subset = percent.mt < 10)
+
+# standard workflow steps
+sub.filtered <- NormalizeData(sub.filtered)
+sub.filtered <- FindVariableFeatures(sub.filtered)
+sub.filtered <- ScaleData(sub.filtered)
+sub.filtered <- RunPCA(sub.filtered)
+#saveRDS(sub.filtered, "filtered_nfs_pca.rds")
+ElbowPlot(sub.filtered)
+sub.filtered <- RunUMAP(sub.filtered, dims = 1:20, reduction = 'pca')
+
+before <- DimPlot(sub.filtered, reduction = 'umap', group.by = 'sample_type')
+before2 <- DimPlot(sub.filtered, reduction = 'umap', group.by = 'ID')
+
+# run Harmony -----------
+sub.harmony <- sub.filtered %>%
+  RunHarmony(group.by.vars = c("ID","sample_type"), plot_convergence = FALSE)
+
+sub.harmony@reductions
+
+sub.harmony.embed <- Embeddings(sub.harmony, "harmony")
+sub.harmony.embed[1:10,1:10]
+
+
+
+# Do UMAP and clustering using ** Harmony embeddings instead of PCA **
+sub.harmony <- sub.harmony %>%
+  RunUMAP(reduction = 'harmony', dims = 1:20) %>%
+  FindNeighbors(reduction = "harmony", dims = 1:20) %>%
+  FindClusters(resolution = 0.5)
+
+saveRDS(sub.harmony,"harmony_allin.rds")
+
+# visualize 
+after <- DimPlot(sub.harmony, reduction = 'umap', group.by = 'sample_type')
+after2 <- DimPlot(sub.harmony, reduction = 'umap', group.by = 'ID')
+
+before|after
+before2|after2
+
+```
+
+```{r}
+for (patient in unique(sub.filtered$ID)){
+  levels <- factor(sub.filtered$ID)
+  colors <- rep("grey", length(levels))
+  colors[patient] <- "blue"
+  plot <- DimPlot(sub.filtered, reduction = "umap",group.by = "ID",cols = colors) + theme(legend.position = "none")
+  ggsave(filename = paste0(patient, ".png"), plot = plot, path = "./before_harm")
+}
+
+for (patient in unique(sub.harmony$ID)){
+  levels <- factor(sub.harmony$ID)
+  colors <- rep("grey", length(levels))
+  colors[patient] <- "blue"
+  plot <- DimPlot(sub.harmony, reduction = "umap",group.by = "ID",cols = colors) + theme(legend.position = "none")
+  ggsave(filename = paste0(patient, ".png"), plot = plot, path = "./after_harm")
+}
+
+for (patient in unique(sub.filtered$sample_type)){
+  levels <- factor(sub.filtered$sample_type)
+  colors <- rep("grey", length(levels))
+  colors[patient] <- "blue"
+  plot <- DimPlot(sub.filtered, reduction = "umap",group.by = "sample_type",cols = colors) + theme(legend.position = "none")
+  ggsave(filename = paste0(patient, ".png"), plot = plot, path = "./type_before_harm")
+}
+
+for (patient in unique(sub.harmony$sample_type)){
+  levels <- factor(sub.harmony$sample_type)
+  colors <- rep("grey", length(levels))
+  colors[patient] <- "blue"
+  plot <- DimPlot(sub.harmony, reduction = "umap",group.by = "sample_type",cols = colors) + theme(legend.position = "none")
+  ggsave(filename = paste0(patient, ".png"), plot = plot, path = "./type_after_harm")
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
